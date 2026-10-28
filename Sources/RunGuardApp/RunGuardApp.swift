@@ -17,7 +17,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var chargingOnly = false
     private var watchdogEnabled = false
     private var closedLidEnabled = false
-    private var previousDisableSleep = 0
     private var workloadFound = false
     private let watchdog = Watchdog()
     private var pauseReason: String?
@@ -29,14 +28,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         autoMode = UserDefaults.standard.bool(forKey: "autoMode")
         chargingOnly = UserDefaults.standard.bool(forKey: "chargingOnly")
         watchdogEnabled = UserDefaults.standard.bool(forKey: "watchdogEnabled")
-        closedLidEnabled = UserDefaults.standard.bool(forKey: "closedLidEnabled")
-        previousDisableSleep = UserDefaults.standard.integer(forKey: "previousDisableSleep")
-        if closedLidEnabled, !setDisableSleep(previousDisableSleep) {
-            addLog("Could not restore sleep setting from the previous session")
-        } else if closedLidEnabled {
-            closedLidEnabled = false
-            UserDefaults.standard.set(false, forKey: "closedLidEnabled")
-            addLog("Restored normal sleep after previous session")
+        if UserDefaults.standard.bool(forKey: "closedLidEnabled") {
+            if ClosedLidHelperClient.request("disable") == "ok" {
+                UserDefaults.standard.set(false, forKey: "closedLidEnabled")
+                addLog("Closed-Lid mode stopped on app launch")
+            } else {
+                closedLidEnabled = true
+                addLog("RunGuard helper unavailable; sleep setting may still be disabled")
+            }
         }
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.title = "RunGuard"
@@ -68,6 +67,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func refresh() {
+        if closedLidEnabled, ClosedLidHelperClient.request("heartbeat") == "off" {
+            closedLidEnabled = false
+            UserDefaults.standard.set(false, forKey: "closedLidEnabled")
+            addLog("Closed-Lid helper restored normal sleep")
+        }
         power = PowerStatus.read()
         let workloads = autoMode || watchdogEnabled ? WorkloadMonitor.running() : []
         workloadFound = autoMode && !workloads.isEmpty
@@ -184,14 +188,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 refresh()
                 return
             }
-            previousDisableSleep = currentDisableSleep()
-            guard setDisableSleep(1) else {
-                addLog("Closed-Lid mode was not enabled")
+            guard ClosedLidHelperClient.request("enable") == "ok" else {
+                addLog("Install the RunGuard helper before using Closed-Lid mode")
+                let alert = NSAlert()
+                alert.messageText = "RunGuard Helper Required"
+                alert.informativeText = "Run ./install-runguard.sh from the RunGuard project folder. macOS will ask for administrator approval once to install the helper."
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
                 refresh()
                 return
             }
             closedLidEnabled = true
-            UserDefaults.standard.set(previousDisableSleep, forKey: "previousDisableSleep")
             UserDefaults.standard.set(true, forKey: "closedLidEnabled")
             addLog("Closed-Lid mode enabled")
             refresh()
@@ -206,44 +213,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return nil
     }
 
-    private func currentDisableSleep() -> Int {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
-        process.arguments = ["-g"]
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = Pipe()
-        do {
-            try process.run()
-            let data = output.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            let text = String(decoding: data, as: UTF8.self)
-            for line in text.split(separator: "\n") where line.contains("SleepDisabled") {
-                return Int(line.split(whereSeparator: \.isWhitespace).last ?? "0") ?? 0
-            }
-        } catch { }
-        return 0
-    }
-
-    private func setDisableSleep(_ value: Int) -> Bool {
-        let script = "do shell script \"/usr/bin/pmset -a disablesleep \(value == 1 ? 1 : 0)\" with administrator privileges"
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", script]
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
-        do {
-            try process.run()
-            process.waitUntilExit()
-            return process.terminationStatus == 0 && currentDisableSleep() == (value == 1 ? 1 : 0)
-        } catch {
-            return false
-        }
-    }
-
     private func disableClosedLid(refreshUI: Bool = true) {
-        guard setDisableSleep(previousDisableSleep) else {
-            addLog("Could not restore the previous sleep setting; run: sudo pmset -a disablesleep \(previousDisableSleep)")
+        guard ClosedLidHelperClient.request("disable") == "ok" else {
+            addLog("Could not contact the RunGuard helper; sleep will restore after its heartbeat timeout")
             if refreshUI { refresh() }
             return
         }
@@ -337,7 +309,7 @@ private struct RunGuardPopover: View {
                 settingRow("Keep Awake", detail: "Prevent idle sleep", symbol: "moon.zzz.fill", isOn: model.keepAwake, action: model.onAwake)
                 settingRow("Auto Mode", detail: "Keep active work awake", symbol: "sparkles", isOn: model.autoMode, action: model.onAutoMode)
                 settingRow("Only When Charging", detail: "Pause on battery", symbol: "powerplug.fill", isOn: model.chargingOnly, action: model.onChargingOnly)
-                settingRow("Closed-Lid Mode", detail: "Requires administrator access", symbol: "laptopcomputer", isOn: model.closedLid, action: model.onClosedLid, badge: "ADMIN")
+                settingRow("Closed-Lid Mode", detail: "One-time helper setup", symbol: "laptopcomputer", isOn: model.closedLid, action: model.onClosedLid, badge: "ADMIN")
                 settingRow("Watchdog", detail: "Alert on idle processes", symbol: "waveform.path", isOn: model.watchdog, action: model.onWatchdog)
             }
 
