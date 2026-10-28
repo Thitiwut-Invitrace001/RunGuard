@@ -1,32 +1,47 @@
 # RunGuard
 
-A native macOS menu bar app for keeping long-running development work awake.
+แอปแถบเมนูสำหรับ macOS ช่วยให้ Mac ทำงานต่อระหว่างงานพัฒนาหรือคำสั่งที่ใช้เวลานาน
 
-## Build
+## เวอร์ชันปัจจุบัน
 
-Run `./build-app.sh`, then open `RunGuard.app`.
+- เวอร์ชันแอป: **0.1.0**
+- Build: **1**
+- รองรับ macOS 13 ขึ้นไป
+- ไฟล์แอปปัจจุบันสร้างสำหรับ Apple Silicon (arm64) และยังไม่ได้เซ็นรับรองสำหรับแจกทั่วไป
 
-The bundled command runner keeps the Mac awake for the lifetime of one command:
+## ฟีเจอร์
+
+- **Keep Awake** ป้องกันไม่ให้ Mac พักจากการไม่มีการใช้งาน
+- **ตั้งเวลา** 30 นาที, 1, 3 หรือ 8 ชั่วโมง
+- **Only When Charging** ให้ทำงานเฉพาะตอนเสียบชาร์จ
+- **Closed-Lid Mode** ป้องกันการพักเครื่องเมื่อปิดฝา โดยขอสิทธิ์ผู้ดูแลระบบ
+- **Auto Mode** ตรวจหาโปรเซสของเครื่องมือพัฒนาบางรายการแล้วคงสถานะไม่พัก
+- **Watchdog** แจ้งเตือนเมื่อโปรเซสที่รู้จักไม่มีการใช้ CPU ต่อเนื่องตามเวลาที่กำหนด
+- **Recent Activity** ดูประวัติกิจกรรมที่บันทึกไว้ในเครื่อง
+- **ตัวครอบคำสั่ง** คงสถานะไม่พักตลอดเวลาที่คำสั่งลูกทำงาน
+- เมนูป๊อปโอเวอร์แบบ SwiftUI แสดงสถานะ แบตเตอรี่ และตัวเลือกต่าง ๆ
+
+## สร้างแอป
+
+รันสคริปต์ต่อไปนี้จากโฟลเดอร์โปรเจกต์:
+
+```sh
+./build-app.sh
+```
+
+จากนั้นเปิด `RunGuard.app` ที่สร้างขึ้น หรือใช้ตัวครอบคำสั่งดังนี้:
 
 ```sh
 RunGuard.app/Contents/MacOS/runguard -- python3 train.py
 ```
 
-## Included
+## ข้อจำกัดและความปลอดภัย
 
-- Manual Keep Awake with a macOS idle-sleep assertion.
-- Timers from 30 minutes to 8 hours.
-- Charging-only behavior.
-- Closed-Lid Mode using the macOS `pmset disablesleep` setting, with an administrator prompt, prior-setting restore, and battery/critical-thermal stop conditions.
-- Auto Mode based on a small list of known developer process names.
-- Battery and critical-thermal guardrails.
-- A local activity history.
-- A command wrapper that releases its assertion when the child command exits.
+- Closed-Lid Mode เปลี่ยนการตั้งค่าระบบ `pmset disablesleep` และขอรหัสผ่านผู้ดูแลทุกครั้งที่เปิดหรือปิด
+- ถ้าแอปหยุดทำงานผิดปกติขณะเปิด Closed-Lid Mode ค่าระบบอาจค้างจนกว่า RunGuard จะเปิดอีกครั้ง รุ่นนี้ยังไม่มี privileged helper เฝ้าดูและคืนค่าระบบเบื้องหลัง
+- โหมดปิดฝาอาจทำให้เครื่องระบายความร้อนได้ไม่ดี ควรวางบนพื้นแข็งที่ระบายอากาศได้ ห้ามวางในกระเป๋า และควรเสียบชาร์จระหว่างงานที่ใช้เวลานาน
+- Auto Mode ตรวจจากชื่อโปรเซสในรายการเริ่มต้น จึงอาจคงสถานะไม่พักแม้โปรแกรมอยู่เฉย ๆ และยังไม่ครอบคลุมเครื่องมือทุกชนิด
+- ยังไม่มี Smart Rules, webhook/การแจ้งเตือนผ่าน Telegram, Discord หรือ Slack, รายงานรายสัปดาห์ และการควบคุมพัดลม
+- แอปนี้เป็นการพัฒนาของเราเองเพื่อทำฟีเจอร์ในกลุ่มเดียวกับ LidRun ไม่ใช่การรับรองว่าเทียบเท่ากับ LidRun Pro ทุกประการ
 
-## Current limits
-
-RunGuard does not yet implement a privileged helper, Smart Rules, push alerts/webhooks, weekly reports, or fan control. Closed-Lid Mode asks for administrator authorization each time it changes the system setting. If RunGuard crashes while the mode is active, the setting may remain enabled until RunGuard is opened again; the app restores the saved setting on its next launch. A plain sleep assertion cannot prevent macOS clamshell sleep. Closed-lid operation can trap heat, so use a hard ventilated surface and keep the battery and thermal protections enabled. Auto Mode is a process-name check, so it can keep the Mac awake while a watched app is idle. It recognizes only a small starter list of tools.
-
-The feature list is based on REA inventory and static analysis of LidRun 1.2.31, plus the vendor's public [feature and pricing page](https://lidrun.com/pricing) and [closed-lid safety guide](https://lidrun.com/guide/closed-lid-safety). The source app is closed-source, so its full runtime behavior and Pro service behavior are not independently verified.
-
-This first build is unsigned and intended for local development on macOS 13 or later.
+ข้อมูลฟีเจอร์ของ LidRun อ้างอิงจากการวิเคราะห์ไฟล์แอปด้วย REA และเอกสารสาธารณะของผู้พัฒนา เช่น [ราคาและฟีเจอร์](https://lidrun.com/pricing) กับ [คู่มือความปลอดภัย Closed-Lid](https://lidrun.com/guide/closed-lid-safety) พฤติกรรมภายในของแอป LidRun แบบเต็มไม่ได้ตรวจสอบจาก source code เนื่องจากเป็นซอฟต์แวร์ปิด
