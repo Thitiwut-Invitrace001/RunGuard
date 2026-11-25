@@ -38,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "RunGuard"
+        statusItem.button?.image = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "RunGuard")
         statusItem.button?.target = self
         statusItem.button?.action = #selector(togglePopover)
         popover.behavior = .transient
@@ -119,7 +119,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         pauseReason = reason
-        statusItem.button?.title = assertion.isActive ? "RunGuard ●" : "RunGuard"
+        statusItem.button?.image = NSImage(systemSymbolName: assertion.isActive ? "bolt.fill" : "bolt", accessibilityDescription: assertion.isActive ? "RunGuard active" : "RunGuard idle")
+        statusItem.button?.contentTintColor = assertion.isActive ? .systemGreen : .secondaryLabelColor
         menuModel.status = statusText(reason: reason)
         menuModel.isActive = assertion.isActive
         menuModel.keepAwake = awakeRequested
@@ -131,6 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuModel.timerRemaining = timerEnd.map { max(0, Int($0.timeIntervalSinceNow / 60)) } ?? 0
         menuModel.battery = power.batteryPercent
         menuModel.isCharging = power.isCharging
+        menuModel.batteryTemperature = power.batteryTemperature
     }
 
     @objc private func togglePopover() {
@@ -284,6 +286,7 @@ private final class RunGuardMenuModel: ObservableObject {
     @Published var timerRemaining = 0
     @Published var battery: Int?
     @Published var isCharging: Bool?
+    @Published var batteryTemperature: Double?
 
     var onAwake: (() -> Void)?
     var onAutoMode: (() -> Void)?
@@ -364,6 +367,7 @@ private struct RunGuardPopover: View {
     }
 
     private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
         HStack(alignment: .center, spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 12).fill(Color.accentColor.gradient)
@@ -384,6 +388,15 @@ private struct RunGuardPopover: View {
                     Text("\(battery)%").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
                 }
             }
+        }
+        HStack(spacing: 7) {
+            Image(systemName: "thermometer.medium").foregroundStyle(.secondary)
+            Text("Battery temperature").foregroundStyle(.secondary)
+            Spacer()
+            Text(model.batteryTemperature.map { String(format: "%.1f°C", $0) } ?? "—")
+                .fontWeight(.semibold)
+        }
+        .font(.system(size: 11))
         }
     }
 
